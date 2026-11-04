@@ -101,7 +101,23 @@ def send_whatsapp_cloud_message(to_number: str, text_body: str) -> None:
 
 @app.route("/")
 def index():
-    return send_from_directory(app.static_folder, "index.html")
+    if (BASE_DIR / "static" / "index.html").exists():
+        return send_from_directory(str(BASE_DIR / "static"), "index.html")
+    return send_from_directory(str(BASE_DIR), "index.html")
+
+
+@app.route("/avatar.jpg")
+def serve_avatar():
+    if (BASE_DIR / "static" / "avatar.jpg").exists():
+        return send_from_directory(str(BASE_DIR / "static"), "avatar.jpg")
+    return send_from_directory(str(BASE_DIR), "avatar.jpg")
+
+
+@app.route("/manifest.json")
+def serve_manifest():
+    if (BASE_DIR / "static" / "manifest.json").exists():
+        return send_from_directory(str(BASE_DIR / "static"), "manifest.json")
+    return send_from_directory(str(BASE_DIR), "manifest.json")
 
 
 @app.route("/api/summary", methods=["GET"])

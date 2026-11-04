@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#08080a" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/avatar.jpg" />
+  <title>Tio Patinhas 🪙 — Assessor Financeiro & Metas via WhatsApp</title>
+  <style>
+    :root {
+      --bg: #08080a;
+      --card: #111116;
+      --card-border: #23232c;
+      --text: #f5f5f7;
+      --muted: #9a9aa6;
+      --whatsapp: #25D366;
+      --danger: #ff4d4f;
+      --warning: #f59e0b;
+      --success: #10b981;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      border-bottom: 1px solid var(--card-border);
+      background: rgba(17, 17, 22, 0.92);
+      backdrop-filter: blur(12px);
+      padding: 14px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand img {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: 2px solid #fff;
+      object-fit: cover;
+    }
+
+    .brand h1 {
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .brand p {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .badges {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .user-selector {
+      background: #181820;
+      color: #fff;
+      border: 1px solid #383848;
+      padding: 7px 12px;
+      border-radius: 10px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .badge {
+      font-size: 0.75rem;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--card-border);
+      background: #181820;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .badge.lgpd {
+      border-color: rgba(16, 185, 129, 0.4);
+      color: #34d399;
+    }
+
+    .btn-wa-guide {
+      background: var(--whatsapp);
+      color: #062819;
+      font-weight: 700;
+      border: none;
+      padding: 7px 14px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      cursor: pointer;
+    }
+
+    .container {
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 22px;
+      padding: 22px 28px;
+      max-width: 1580px;
+      width: 100%;
+      margin: 0 auto;
+      flex: 1;
+    }
+
+    @media (max-width: 1080px) {
+      .container {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .whatsapp-panel {
+      background: #0b141a;
+      border: 1px solid #222e35;
+      border-radius: 18px;
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 125px);
+      min-height: 640px;
+      overflow: hidden;
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+    }
+
+    .wa-header {
+      background: #202c33;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid #2a3942;
+    }
+
+    .wa-header img {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 1.5px solid #fff;
+    }
+
+    .wa-header-info h2 {
+      font-size: 0.96rem;
+      font-weight: 700;
+      color: #e9edef;
+    }
+
+    .wa-header-info span {
+      font-size: 0.76rem;
+      color: #25D366;
+    }
+
+    .wa-messages {
+      flex: 1;
+      padding: 16px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 0);
+      background-size: 20px 20px;
+    }
+
+    .msg {
+      max-width: 88%;
+      padding: 10px 13px;
+      border-radius: 12px;
+      font-size: 0.86rem;
+      line-height: 1.48;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+    }
+
+    .msg.user {
+      background: #005c4b;
+      color: #e9edef;
+      align-self: flex-end;
+      border-bottom-right-radius: 2px;
+    }
+
+    .msg.bot {
+      background: #202c33;
+      color: #e9edef;
+      align-self: flex-start;
+      border-bottom-left-radius: 2px;
+      border: 1px solid #2c3b45;
+    }
+
+    .msg-time {
+      font-size: 0.68rem;
+      color: rgba(255, 255, 255, 0.5);
+      text-align: right;
+      margin-top: 4px;
+    }
+
+    .quick-chips {
+      padding: 8px 12px;
+      background: #111b21;
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      border-top: 1px solid #202c33;
+    }
+
+    .chip {
+      background: #202c33;
+      color: #d1d7db;
+      border: 1px solid #2a3942;
+      padding: 5px 10px;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: 0.15s;
+    }
+
+    .chip.highlight {
+      border-color: #f59e0b;
+      color: #fcd34d;
+      font-weight: 700;
+    }
+
+    .chip:hover {
+      background: #2a3942;
+      color: #fff;
+    }
+
+    .wa-input-bar {
+      padding: 10px 12px;
+      background: #202c33;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .wa-input-bar input {
+      flex: 1;
+      background: #2a3942;
+      border: none;
+      color: #fff;
+      padding: 11px 14px;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      outline: none;
+    }
+
+    .wa-input-bar button {
+      background: var(--whatsapp);
+      color: #081c15;
+      font-weight: 700;
+      border: none;
+      padding: 11px 16px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 0.88rem;
+    }
+
+    .dashboard {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+
+    @media (max-width: 1280px) {
+      .kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    .kpi-card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .kpi-label {
+      font-size: 0.78rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .kpi-value {
+      font-size: 1.55rem;
+      font-weight: 800;
+    }
+
+    .kpi-sub {
+      font-size: 0.76rem;
+      color: var(--muted);
+    }
+
+    /* Card Especial: Fechamento do Mês (Dia 30) */
+    .closing-card {
+      background: linear-gradient(135deg, #161622 0%, #111b21 100%);
+      border: 1px solid rgba(245, 158, 11, 0.45);
+      border-radius: 16px;
+      padding: 20px;
+    }
+
+    .closing-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .closing-header h3 {
+      color: #fcd34d;
+      font-size: 1.05rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .closing-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 12px 0;
+      font-size: 0.86rem;
+      line-height: 1.45;
+    }
+
+    .closing-rec-item {
+      background: rgba(0, 0, 0, 0.35);
+      border-left: 3px solid var(--warning);
+      padding: 9px 12px;
+      border-radius: 6px;
+    }
+
+    .closing-summary-bar {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 10px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      color: #a7f3d0;
+      font-size: 0.85rem;
+      line-height: 1.45;
+    }
+
+    .section-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 18px;
+    }
+
+    @media (max-width: 1200px) {
+      .section-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 20px;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .card-header h3 {
+      font-size: 1.02rem;
+      font-weight: 700;
+    }
+
+    .btn-outline {
+      background: transparent;
+      border: 1px solid #3f3f4e;
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 0.78rem;
+      cursor: pointer;
+    }
+
+    .btn-outline:hover {
+      background: #23232c;
+    }
+
+    .goal-item {
+      background: #17171f;
+      border: 1px solid #282836;
+      border-radius: 12px;
+      padding: 15px;
+      margin-bottom: 12px;
+    }
+
+    .goal-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .goal-title {
+      font-weight: 700;
+      font-size: 0.95rem;
+    }
+
+    .goal-amounts {
+      font-size: 0.84rem;
+      color: var(--muted);
+    }
+
+    .progress-bar-bg {
+      width: 100%;
+      height: 9px;
+      background: #262633;
+      border-radius: 999px;
+      overflow: hidden;
+      margin: 8px 0 10px 0;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #ffffff, #25D366);
+      border-radius: 999px;
+      transition: width 0.4s ease;
+    }
+
+    .goal-metrics {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 0.78rem;
+      color: #d1d5db;
+    }
+
+    .goal-boost {
+      margin-top: 8px;
+      padding: 7px 10px;
+      border-radius: 8px;
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: #fcd34d;
+      font-size: 0.76rem;
+    }
+
+    .cat-row {
+      margin-bottom: 12px;
+    }
+
+    .cat-row-top {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.84rem;
+      margin-bottom: 5px;
+    }
+
+    .cat-bar-bg {
+      width: 100%;
+      height: 7px;
+      background: #23232e;
+      border-radius: 99px;
+      overflow: hidden;
+    }
+
+    .cat-bar-fill {
+      height: 100%;
+      background: #fff;
+      border-radius: 99px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.84rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 10px 8px;
+      border-bottom: 1px solid #20202a;
+    }
+
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.76rem;
+      text-transform: uppercase;
+    }
+
+    .pill {
+      padding: 3px 8px;
+      border-radius: 99px;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+
+    .pill.futility {
+      background: rgba(255, 77, 79, 0.18);
+      color: #ff7875;
+    }
+
+    .pill.essential {
+      background: rgba(16, 185, 129, 0.18);
+      color: #34d399;
+    }
+
+    .pill.income {
+      background: rgba(59, 130, 246, 0.18);
+      color: #60a5fa;
+    }
+
+    .pill.investment {
+      background: rgba(250, 204, 21, 0.18);
+      color: #fde047;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <img src="/avatar.jpg" alt="Logo Tio Patinhas Moeda Número 1" />
+      <div>
+        <h1>TIO PATINHAS</h1>
+        <p>Guardião Financeiro Pessoal • Multi-Usuário (Você, Esposa & Amigos)</p>
+      </div>
+    </div>
+    <div class="badges">
+      <label style="font-size: 0.78rem; color: var(--muted);">Perfil Ativo:</label>
+      <select id="userSelect" class="user-selector" onchange="onUserChange()">
+        <option value="voce">👤 Você (Admin)</option>
+        <option value="esposa">👩 Esposa</option>
+        <option value="amigo1">🧑 Amigo 1 (Tester)</option>
+        <option value="amigo2">🧑 Amigo 2 (Tester)</option>
+      </select>
+      <div class="badge lgpd">🔒 LGPD Safe (Saldo Manual)</div>
+      <div class="badge" id="aiStatusBadge">🤖 IA Ativa</div>
+      <button class="btn-outline" style="border-color: var(--danger); color: #ff7875;" onclick="confirmReset()">🗑️ Zerar Tudo</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Coluna Esquerda: Conversa WhatsApp com o Tio Patinhas -->
+    <section class="whatsapp-panel">
+      <div class="wa-header">
+        <img src="/avatar.jpg" alt="Tio Patinhas" />
+        <div class="wa-header-info">
+          <h2 id="waHeaderTitle">Tio Patinhas 🪙 (Seu Bot Privado)</h2>
+          <span>● conectado ao painel em tempo real</span>
+        </div>
+      </div>
+
+      <div class="wa-messages" id="chatContainer"></div>
+
+      <div class="quick-chips">
+        <button class="chip highlight" onclick="sendQuick('Me mostra o fechamento do mês dia 30 de novembro')">📅 Fechamento Dia 30</button>
+        <button class="chip" onclick="sendQuick('Fui comer um sanduíche e gastei 35 reais')">🍔 Sanduíche R$ 35</button>
+        <button class="chip" onclick="sendQuick('Recebi 2200 de salário')">💵 Salário R$ 2.200</button>
+        <button class="chip" onclick="sendQuick('Guardei 300 reais para a moto')">🏍️ +R$ 300 Moto</button>
+      </div>
+
+      <form class="wa-input-bar" onsubmit="handleChatSubmit(event)">
+        <input
+          type="text"
+          id="chatInput"
+          placeholder="Ex: Fui comer um sanduíche e gastei 35 reais..."
+          autocomplete="off"
+        />
+        <button type="submit" id="sendBtn">Enviar</button>
+      </form>
+    </section>
+
+    <!-- Coluna Direita: Métricas, Fechamento Dia 30 e Projeções (Moto/Casa) -->
+    <section class="dashboard">
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">
+            <span>Renda vs. Sobra no Mês</span>
+            <button class="btn-outline" onclick="promptNewBalance()">Ajustar Saldo</button>
+          </div>
+          <div class="kpi-value" id="kpiBalance">R$ 0,00</div>
+          <div class="kpi-sub" id="kpiIncomeSub">Receita no mês: R$ 2.200,00</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-label"><span>Total Gasto no Mês</span></div>
+          <div class="kpi-value" id="kpiExpenses">R$ 0,00</div>
+          <div class="kpi-sub" id="kpiEssentialSub">Essenciais: R$ 0,00</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-label"><span>Gastos com Futilidades</span></div>
+          <div class="kpi-value" style="color: var(--danger);" id="kpiFutility">R$ 0,00</div>
+          <div class="kpi-sub" id="kpiFutilityPct">0% do total gasto no mês</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-label"><span>Sobra Ideal (Pós-Corte)</span></div>
+          <div class="kpi-value" style="color: var(--success);" id="kpiIdealSavings">R$ 0,00/mês</div>
+          <div class="kpi-sub" id="kpiRecoverableSub">Recuperando R$ 0,00 de futilidades</div>
+        </div>
+      </div>
+
+      <!-- NOVO: Relatório Automático do Dia 30 ("O que você deveria ter feito") -->
+      <div class="closing-card">
+        <div class="closing-header">
+          <h3>📅 Parecer de Fechamento do Mês (Dia 30) — "O Que Você Deveria Ter Feito"</h3>
+          <button class="btn-outline" onclick="sendQuick('Me mostra o fechamento do mês dia 30 de novembro')">Enviar Resumo no WhatsApp</button>
+        </div>
+        <p style="font-size: 0.84rem; color: #d1d5db;" id="closingIntro"></p>
+        <div class="closing-list" id="closingRecsList"></div>
+        <div class="closing-summary-bar" id="closingImpactBar"></div>
+      </div>
+
+      <div class="section-grid">
+        <!-- Planejador de Metas Futuras (Moto, Casa, etc.) -->
+        <div class="card">
+          <div class="card-header">
+            <h3>🎯 Planejamento de Metas (Moto, Casa & Sonhos)</h3>
+            <button class="btn-outline" onclick="promptNewGoal()">+ Nova Meta</button>
+          </div>
+          <div id="goalsContainer"></div>
+        </div>
+
+        <!-- Média por Categoria -->
+        <div class="card">
+          <div class="card-header">
+            <h3>📊 Média de Gastos por Categoria no Mês</h3>
+          </div>
+          <div id="categoriesContainer"></div>
+        </div>
+      </div>
+
+      <!-- Histórico de Lançamentos -->
+      <div class="card">
+        <div class="card-header">
+          <h3>📒 Lançamentos do Mês Registrados via WhatsApp</h3>
+        </div>
+        <div style="overflow-x: auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Descrição</th>
+                <th>Categoria</th>
+                <th>Classificação IA</th>
+                <th>Valor</th>
+              </tr>
+            </thead>
+            <tbody id="txTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let currentUserId = 'voce';
+    const brl = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    function formatMarkdown(text) {
+      return (text || '')
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+        .replace(/\*(.*?)\*/g, "<em>$1</em>");
+    }
+
+    function renderDashboard(data) {
+      const cr = data.closing_report || {};
+      document.getElementById('aiStatusBadge').textContent = '🤖 ' + (data.ai_mode || 'IA Ativa');
+      document.getElementById('waHeaderTitle').textContent = `Tio Patinhas 🪙 (${data.active_user.name})`;
+
+      document.getElementById('kpiBalance').textContent = brl(data.balance);
+      document.getElementById('kpiIncomeSub').textContent = `Recebeu no mês: ${brl(data.total_income)}`;
+      document.getElementById('kpiExpenses').textContent = brl(data.total_expenses);
+      document.getElementById('kpiEssentialSub').textContent = 'Gastos Essenciais: ' + brl(data.essential_expenses);
+      document.getElementById('kpiFutility').textContent = brl(data.futility_expenses);
+      document.getElementById('kpiFutilityPct').textContent = `${data.futility_percentage}% de tudo que você gastou`;
+      document.getElementById('kpiIdealSavings').textContent = brl(cr.ideal_savings) + '/mês';
+      document.getElementById('kpiRecoverableSub').textContent = `Cortando ${brl(cr.recoverable_total)} em futilidades`;
+
+      // Fechamento Dia 30
+      document.getElementById('closingIntro').innerHTML =
+        `Neste mês você recebeu <strong>${brl(cr.income)}</strong> e gastou <strong>${brl(cr.expenses)}</strong> (sobraram apenas <strong>${brl(cr.leftover)}</strong>). Veja o que o Tio Patinhas identificou que <strong>você deveria ter feito</strong>:`;
+
+      const recsEl = document.getElementById('closingRecsList');
+      if (cr.recommendations && cr.recommendations.length > 0) {
+        recsEl.innerHTML = cr.recommendations.map(r => `<div class="closing-rec-item">${formatMarkdown(r)}</div>`).join('');
+      } else {
+        recsEl.innerHTML = `<div class="closing-rec-item">✅ Nenhum gasto supérfluo detectado neste mês!</div>`;
+      }
+
+      document.getElementById('closingImpactBar').innerHTML = formatMarkdown(
+        `💡 **Resumo do Dia 30:** Seguindo os ajustes acima, você teria economizado **+${brl(cr.recoverable_total)} extras** e fechado o mês com **${brl(cr.ideal_savings)} livres**!\n` +
+        (cr.goal_impact_text || '')
+      );
+
+      // Chat
+      const chatEl = document.getElementById('chatContainer');
+      chatEl.innerHTML = data.messages.map(m => `
+        <div class="msg ${m.sender}">
+          <div>${formatMarkdown(m.message)}</div>
+          <div class="msg-time">${m.created_at}</div>
+        </div>
+      `).join('');
+      chatEl.scrollTop = chatEl.scrollHeight;
+
+      // Metas
+      const goalsEl = document.getElementById('goalsContainer');
+      goalsEl.innerHTML = data.goals.map(g => `
+        <div class="goal-item">
+          <div class="goal-top">
+            <span class="goal-title">${g.category_icon} ${g.name}</span>
+            <span class="goal-amounts"><strong>${brl(g.saved_amount)}</strong> de ${brl(g.target_amount)} (${g.progress_pct}%)</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" style="width: ${g.progress_pct}%"></div>
+          </div>
+          <div class="goal-metrics">
+            <span>📅 Prazo: <strong>${g.deadline_months} meses</strong></span>
+            <span>💰 Guardar por mês: <strong>${brl(g.monthly_needed)}/mês</strong></span>
+            <span>Faltam: <strong>${brl(g.remaining)}</strong></span>
+          </div>
+          ${g.months_saved_cutting_futility > 0 ? `
+            <div class="goal-boost">
+              ⚡ <strong>Acelerador Tio Patinhas:</strong> Cortando as futilidades recomendadas no Fechamento do Dia 30, você conquista <strong>${g.name}</strong> em <strong>${g.accelerated_months} meses</strong> (${g.months_saved_cutting_futility} meses mais cedo!).
+            </div>
+          ` : ''}
+        </div>
+      `).join('');
+
+      // Categorias
+      const catEl = document.getElementById('categoriesContainer');
+      catEl.innerHTML = data.category_breakdown.map(c => `
+        <div class="cat-row">
+          <div class="cat-row-top">
+            <span>${c.category}</span>
+            <strong>${brl(c.amount)} (${c.percentage}%)</strong>
+          </div>
+          <div class="cat-bar-bg">
+            <div class="cat-bar-fill" style="width: ${c.percentage}%"></div>
+          </div>
+        </div>
+      `).join('');
+
+      // Transações
+      const txEl = document.getElementById('txTableBody');
+      const labels = {
+        futility: '⚠️ Futilidade / Cortável',
+        essential: '✅ Essencial',
+        income: '💰 Receita',
+        investment: '🎯 Meta / Reserva'
+      };
+      txEl.innerHTML = data.transactions.map(t => `
+        <tr>
+          <td style="color: var(--muted)">${t.created_at}</td>
+          <td><strong>${t.description}</strong></td>
+          <td>${t.category}</td>
+          <td><span class="pill ${t.necessity}">${labels[t.necessity] || t.necessity}</span></td>
+          <td style="font-weight: 700; color: ${t.type === 'expense' ? '#ff7875' : '#34d399'}">
+            ${t.type === 'expense' ? '-' : '+'}${brl(t.amount)}
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    async function loadSummary() {
+      const res = await fetch(`/api/summary?user_id=${encodeURIComponent(currentUserId)}`);
+      const data = await res.json();
+      renderDashboard(data);
+    }
+
+    function onUserChange() {
+      currentUserId = document.getElementById('userSelect').value;
+      async function confirmReset() {
+      if (!confirm('Tem certeza que deseja zerar todos os gastos, saldo e metas deste perfil para começar do zero?')) return;
+      const res = await fetch('/api/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: currentUserId })
+      });
+      const data = await res.json();
+      if (data.summary) renderDashboard(data.summary);
+    }
+
+    loadSummary();
+    }
+
+    async function sendMessage(text) {
+      const btn = document.getElementById('sendBtn');
+      btn.disabled = true;
+      btn.textContent = '...';
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text, user_id: currentUserId })
+        });
+        const data = await res.json();
+        if (data.summary) renderDashboard(data.summary);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Enviar';
+      }
+    }
+
+    function handleChatSubmit(e) {
+      e.preventDefault();
+      const input = document.getElementById('chatInput');
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = '';
+      sendMessage(text);
+    }
+
+    function sendQuick(text) {
+      sendMessage(text);
+    }
+
+    async function promptNewBalance() {
+      const val = prompt('Qual é o seu saldo bancário atual (R$)?');
+      if (val === null) return;
+      const num = parseFloat(val.replace(',', '.'));
+      if (isNaN(num)) return;
+      await sendMessage(`Meu saldo na conta hoje é ${num} reais`);
+    }
+
+    async function promptNewGoal() {
+      const name = prompt('Qual o nome do seu objetivo? (Ex: Comprar Moto, Casa Própria, Viagem)');
+      if (!name) return;
+      const target = parseFloat((prompt('Qual o valor total desse objetivo (R$)?', '18000') || '0').replace(',', '.'));
+      const months = parseInt(prompt('Em quantos meses você quer conquistar isso?', '24') || '24', 10);
+      if (target > 0) {
+        const res = await fetch('/api/goals', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, target_amount: target, saved_amount: 0, deadline_months: months, user_id: currentUserId })
+        });
+        const data = await res.json();
+        if (data.summary) renderDashboard(data.summary);
+      }
+    }
+
+    async function confirmReset() {
+      if (!confirm('Tem certeza que deseja zerar todos os gastos, saldo e metas deste perfil para começar do zero?')) return;
+      const res = await fetch('/api/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: currentUserId })
+      });
+      const data = await res.json();
+      if (data.summary) renderDashboard(data.summary);
+    }
+
+    loadSummary();
+    // Atualiza o Dashboard em tempo real sempre que chegar mensagem pelo WhatsApp!
+    setInterval(loadSummary, 3000);
+  </script>
+</body>
+</html>

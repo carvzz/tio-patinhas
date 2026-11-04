@@ -1,0 +1,16 @@
+{
+  "name": "Tio Patinhas 🪙 — Assessor Financeiro",
+  "short_name": "Tio Patinhas",
+  "description": "Guardião Financeiro Pessoal via WhatsApp + Gemini AI",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#08080a",
+  "theme_color": "#08080a",
+  "icons": [
+    {
+      "src": "/avatar.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg"
+    }
+  ]
+}
