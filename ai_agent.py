@@ -31,6 +31,7 @@ from database import (
     update_last_transaction,
     update_transaction_by_keyword,
     undo_last_transaction,
+    undo_specific_or_last_transaction,
     search_transactions_natural,
     upsert_goal,
     set_goal_saved_exact,
@@ -42,21 +43,65 @@ from supabase_sync import sync_snapshot_to_supabase_async
 
 DEFAULT_GEMINI_API_KEY = os.environ.get(
     "GEMINI_API_KEY",
-    "AQ.Ab8RN6IO671e28JokODiuS__9lvs8cRmPFJ19BFdEAz-guD9eA",
+    "AQ.Ab8RN6Kx9_3iM7BBcWjHrYl9gVV2DtJV0dEA8GRZDZulRKwKSw",
 )
+
+
+def _call_gemini_api(prompt: str, media_b64: Optional[str] = None, mime_type: Optional[str] = None) -> Optional[str]:
+    """
+    Chama o Gemini suportando tanto chaves Vertex AI Express (`AQ.Ab8RN6...` via endpoint aiplatform)
+    quanto chaves padrão AI Studio (`AIzaSy...` via google-genai SDK).
+    """
+    api_key = (os.environ.get("GEMINI_API_KEY") or DEFAULT_GEMINI_API_KEY or "").strip()
+    if not api_key:
+        return None
+
+    models = ("gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-3.5-flash-lite")
+    if api_key.startswith("AQ."):
+        import httpx
+        parts = []
+        if media_b64 and mime_type:
+            parts.append({"inlineData": {"mimeType": mime_type, "data": media_b64}})
+        parts.append({"text": prompt})
+        payload = {"contents": [{"role": "user", "parts": parts}]}
+        for m_name in models:
+            try:
+                url = f"https://aiplatform.googleapis.com/v1/publishers/google/models/{m_name}:generateContent?key={api_key}"
+                resp = httpx.post(url, json=payload, timeout=8.0)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    cands = data.get("candidates") or []
+                    if cands:
+                        txt_parts = cands[0].get("content", {}).get("parts", [])
+                        out = "".join(p.get("text", "") for p in txt_parts).strip()
+                        if out:
+                            return out
+                elif resp.status_code in (401, 403):
+                    break
+            except Exception:
+                continue
+        return None
+
+    try:
+        from google import genai
+        client = genai.Client(api_key=api_key)
+        for m_name in ("gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-3.8-flash"):
+            try:
+                resp = client.models.generate_content(model=m_name, contents=prompt)
+                if resp.text:
+                    return resp.text.strip()
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
 
 
 def process_multimodal_media(media_bytes: bytes, mime_type: str, caption: str = "", user_id: str = "voce") -> Dict[str, Any]:
     """
     Suporte a Áudios de Voz (PTT) e Fotos de Comprovantes/Notas Fiscais no WhatsApp via Gemini API!
-    1. Envia o áudio ou imagem para o Gemini (`gemini-3.5-flash-lite` / `gemini-3.8-flash`).
-    2. O Gemini transcreve o áudio ou lê os dados do comprovante/nota fiscal em uma frase financeira clara.
-    3. Passa a frase extraída para o nosso motor contábil determinístico (`process_user_message`)!
     """
     import base64
-    from google import genai
-
-    client = genai.Client(api_key=DEFAULT_GEMINI_API_KEY)
     b64_data = base64.b64encode(media_bytes).decode("utf-8")
 
     is_audio = "audio" in mime_type or "ogg" in mime_type
@@ -70,25 +115,7 @@ def process_multimodal_media(media_bytes: bytes, mime_type: str, caption: str = 
         "Retorne APENAS a frase."
     )
 
-    extracted_sentence = caption.strip()
-    for model_name in ("gemini-3.5-flash-lite", "gemini-3.8-flash"):
-        try:
-            interaction = client.interactions.create(
-                model=model_name,
-                input=[
-                    {
-                        "type": "audio" if is_audio else "image",
-                        "data": b64_data,
-                        "mime_type": mime_type,
-                    },
-                    {"type": "text", "text": prompt},
-                ],
-            )
-            if interaction.output_text:
-                extracted_sentence = interaction.output_text.strip()
-                break
-        except Exception as e:
-            print(f"[Aviso Multimodal {model_name}]: {e}")
+    extracted_sentence = _call_gemini_api(prompt, media_b64=b64_data, mime_type=mime_type) or caption.strip()
 
     if not extracted_sentence:
         return {
@@ -253,35 +280,73 @@ def _handle_contextual_consolidation(user_text: str, user_id: str, ext: Financia
             "summary": summary,
         }
 
-    # Caso B: Correção de um lançamento específico mencionado pelo nome ("A pizza que comprei entra como futilidade", "a Pizza não é transporte, é Delivery")
-    if any(k in t for k in ["entra como", "não é", "nao e", "pode refazer", "me refiro", "corrigir a ", "mudar a "]):
-        for target_kw in ["pizza", "bella massa", "coca", "açaí", "acai", "pão", "pao", "queijo", "picolé", "picole", "uber", "energia", "academia"]:
-            if target_kw in t:
-                cat, subcat, nec = classify_merchant_and_category(user_text)
-                if "futilidade" in t or "delivery" in t:
-                    cat, subcat, nec = "Lanche / Delivery", "Alimentação Fora", "futility"
-                elif "essencial" in t:
-                    nec = "essential"
-                updated = update_transaction_by_keyword(user_id, target_kw, {"category": cat, "subcategory": subcat, "necessity": nec})
-                if updated:
-                    summary = get_dashboard_summary(user_id)
-                    return {
-                        "intent": "edit_specific_transaction",
-                        "reply": (
-                            f"✏️ *Lançamento corrigido com sucesso!* (ID #{updated['id']})\n\n"
-                            f"• *Item:* {updated['description']} (R$ {updated['amount']:,.2f})\n"
-                            f"• *Nova Categoria:* {updated['category']} ▸ {updated.get('subcategory') or ''}\n"
-                            f"• *Nova Classificação:* {'⚠️ Futilidade / Supérfluo' if updated['necessity'] == 'futility' else '✅ Essencial'}\n"
-                            f"• *Saldo em Conta:* R$ {summary['balance']:,.2f}"
-                        ),
-                        "summary": summary,
-                    }
+    # Caso B: Correção universal de qualquer lançamento específico ou do último ("A pizza não é transporte, é lanche", "muda a puizza pra futilidade", "corrige o valor da energia pra 250")
+    is_correction_phrase = (
+        ext.intent == "edit_last_transaction"
+        or any(k in t for k in [
+            "entra como", "não é", "nao e", "nao é", "não foi", "nao foi", "pode refazer",
+            "me refiro", "corrigir", "corrige", "corrija", "mudar", "muda", "mude",
+            "alterar", "altera", "altere", "trocar", "troca", "coloca como", "bota como",
+            "passa pra", "passa para", "na verdade", "errei", "tá errado", "ta errado", "estava errado"
+        ])
+    )
+    if is_correction_phrase:
+        # Remove trechos negados ("não é transporte", "não foi lanche") para não classificar a categoria errada!
+        positive_text = re.sub(r"n[ãa]o\s+(?:é|e|foi|entra\s+como|era)\s+[a-zà-ú/]+", " ", user_text, flags=re.I)
+        cat, subcat, nec = classify_merchant_and_category(positive_text)
 
-    # Caso C: Complementação ou Correção do último lançamento ("No mercado", "Foi no crédito", "Na verdade foi 95")
-    if ext.references_previous or ext.intent in ("edit_last_transaction", "partial_or_contextual_input"):
+        t_pos = positive_text.lower()
+        if any(k in t_pos for k in ["futilidade", "supérfluo", "superfluo", "besteira"]):
+            if cat == "Outros":
+                cat, subcat = "Lanche / Delivery", "Alimentação Fora"
+            nec = "futility"
+        elif "essencial" in t_pos:
+            nec = "essential"
+
         updates: Dict[str, Any] = {}
-        if ext.amount is not None and any(k in t for k in ["na verdade", "corrigir", "errei", "foi ", "deu ", "altera", "muda"]):
-            updates["amount"] = ext.amount
+        if cat != "Outros":
+            updates["category"] = cat
+            updates["subcategory"] = subcat
+            updates["necessity"] = nec
+        elif "futilidade" in t_pos or "essencial" in t_pos:
+            updates["necessity"] = nec
+
+        # Verifica se o usuário está corrigindo o valor ("foi 42", "valor para 42", "na verdade foi 42") vs referenciando o lançamento pelo valor ("aquele gasto de 35.99")
+        if ext.amount is not None:
+            if any(k in t for k in ["valor", "na verdade foi", "errei", "foi R$", "custou", "deu "]) and not any(k in t for k in ["gasto de", "compra de", "lançamento de", "lancamento de"]):
+                updates["amount"] = ext.amount
+            else:
+                updates["match_amount"] = ext.amount
+
+        if ext.payment_method:
+            updates["payment_method"] = ext.payment_method
+        if ext.card_name:
+            updates["card_name"] = ext.card_name
+
+        if updates:
+            # 1º tenta localizar o lançamento específico citado na frase (com fuzzy match p/ 'puizza', etc.)
+            updated = update_transaction_by_keyword(user_id, user_text, updates)
+            # 2º se não citou nenhum item específico, atualiza o último lançamento
+            if not updated:
+                updated = update_last_transaction(user_id, updates)
+            if updated:
+                summary = get_dashboard_summary(user_id)
+                return {
+                    "intent": "edit_specific_transaction",
+                    "reply": (
+                        f"✏️ *Lançamento corrigido com sucesso!* (ID #{updated['id']})\n\n"
+                        f"• *Item:* {updated['description']}\n"
+                        f"• *Valor:* R$ {updated['amount']:,.2f}\n"
+                        f"• *Categoria:* {updated['category']}" + (f" ▸ {updated.get('subcategory')}" if updated.get('subcategory') else "") + "\n"
+                        f"• *Classificação:* {'⚠️ Futilidade / Supérfluo' if updated['necessity'] == 'futility' else '✅ Essencial'}\n"
+                        f"• *Saldo Atualizado em Conta:* R$ {summary['balance']:,.2f}"
+                    ),
+                    "summary": summary,
+                }
+
+    # Caso C: Complementação contextual do último lançamento ("No mercado", "Foi no crédito")
+    if ext.references_previous or ext.intent == "partial_or_contextual_input":
+        updates = {}
         if ext.payment_method:
             updates["payment_method"] = ext.payment_method
         if ext.card_name:
@@ -336,14 +401,36 @@ def _handle_contextual_consolidation(user_text: str, user_id: str, ext: Financia
     return None
 
 
-def _gemini_conversational_answer(user_text: str, summary: Dict[str, Any]) -> Optional[str]:
-    """Usa o Gemini (com fallback entre `gemini-3.5-flash-lite` e `gemini-3.8-flash`) para respostas conversacionais super naturais."""
-    api_key = os.environ.get("GEMINI_API_KEY") or DEFAULT_GEMINI_API_KEY
-    if not api_key:
-        return None
+def _gemini_semantic_enrich(user_text: str, ext: FinancialExtraction) -> FinancialExtraction:
+    """
+    Usa o Gemini (`gemini-2.5-flash-lite` / `gemini-2.5-flash`) para enriquecer a interpretação
+    semântica quando uma categoria cai em 'Outros' ou há nuances complexas/gírias.
+    """
+    if not (ext.category == "Outros" and ext.amount is not None):
+        return ext
     try:
-        from google import genai
-        client = genai.Client(api_key=api_key)
+        prompt = (
+            "Analise a mensagem financeira em português e retorne APENAS um JSON válido com:\n"
+            '{"category": "Lanche / Delivery"|"Alimentação"|"Transporte"|"Moradia"|"Saúde"|"Compras / Lazer"|"Assinaturas"|"Outros", '
+            '"subcategory": string|null, "necessity": "essential"|"futility"}\n'
+            f"Mensagem: {user_text}"
+        )
+        txt = _call_gemini_api(prompt) or ""
+        m = re.search(r"\{.*\}", txt, re.S)
+        if m:
+            data = json.loads(m.group(0))
+            if data.get("category") and ext.category == "Outros":
+                ext.category = data["category"]
+                ext.subcategory = data.get("subcategory")
+                ext.necessity = data.get("necessity", ext.necessity)
+    except Exception:
+        pass
+    return ext
+
+
+def _gemini_conversational_answer(user_text: str, summary: Dict[str, Any]) -> Optional[str]:
+    """Usa o Gemini para respostas conversacionais abertas."""
+    try:
         sys_inst = (
             "Você é o Tio Patinhas 🪙🎩, guardião financeiro pessoal do usuário no WhatsApp.\n"
             "Responda em português brasileiro, de forma direta, carismática, sem enrolação, usando formatação do WhatsApp (*negrito*).\n"
@@ -356,17 +443,9 @@ def _gemini_conversational_answer(user_text: str, summary: Dict[str, Any]) -> Op
             f"- Metas Ativas: {json.dumps(summary['goals'], ensure_ascii=False)}\n"
             f"- Categorias de gasto no mês: {json.dumps(summary['category_breakdown'], ensure_ascii=False)}"
         )
-        for model_name in ("gemini-3.5-flash-lite", "gemini-3.8-flash"):
-            try:
-                interaction = client.interactions.create(
-                    model=model_name,
-                    system_instruction=sys_inst,
-                    input=user_text,
-                )
-                if interaction.output_text:
-                    return interaction.output_text.strip().replace("**", "*")
-            except Exception:
-                continue
+        out = _call_gemini_api(f"{sys_inst}\n\nPergunta do usuário: {user_text}")
+        if out:
+            return out.replace("**", "*")
     except Exception:
         pass
     return None
@@ -379,12 +458,17 @@ def _finalize_and_sync(result: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def process_user_message(user_text: str, user_id: str = "voce") -> Dict[str, Any]:
+    """Garante que TODA operação feita no WhatsApp sincronize imediatamente com o Supabase e com o site!"""
+    return _finalize_and_sync(_process_user_message_inner(user_text, user_id))
+
+
+def _process_user_message_inner(user_text: str, user_id: str = "voce") -> Dict[str, Any]:
     """
     Pipeline completo de 4 Camadas:
     1. Entrada -> 2. Extração/Contexto -> 3. Motor de Regras Contábeis -> 4. Persistência & Resposta Auditável.
     """
     summary_before = get_dashboard_summary(user_id)
-    ext = extract_financial_entities(user_text)
+    ext = _gemini_semantic_enrich(user_text, extract_financial_entities(user_text))
     intent = ext.intent
     amount = ext.amount or 0.0
 
@@ -401,20 +485,20 @@ def process_user_message(user_text: str, user_id: str = "voce") -> Dict[str, Any
             "summary": summary_after,
         }
 
-    # 2. Desfazer / Excluir último lançamento (Seção 6 — Segurança e Auditoria)
+    # 2. Desfazer / Excluir lançamento (específico pelo nome/valor ou o último)
     if intent == "undo_or_delete_last":
-        undone = undo_last_transaction(user_id)
+        undone = undo_specific_or_last_transaction(user_id, user_text, ext.amount)
         summary_after = get_dashboard_summary(user_id)
         if not undone:
             return {
                 "intent": intent,
-                "reply": "ℹ️ Não encontrei nenhum lançamento ativo para desfazer no seu cofre.",
+                "reply": "ℹ️ Não encontrei nenhum lançamento correspondente para apagar/desfazer no seu cofre.",
                 "summary": summary_after,
             }
         return {
             "intent": intent,
             "reply": (
-                f"↩️ *Operação desfeita com segurança!* (Registro #{undone['id']} arquivado na auditoria)\n\n"
+                f"↩️ *Lançamento removido/estornado com segurança!* (Registro #{undone['id']} arquivado na auditoria)\n\n"
                 f"• *Estornado:* {undone['description']} (R$ {undone['amount']:,.2f})\n"
                 f"• *Saldo Restaurado na Conta:* R$ {summary_after['balance']:,.2f}"
             ),

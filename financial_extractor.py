@@ -290,24 +290,43 @@ def extract_payment_and_accounts(text: str) -> Dict[str, Any]:
 def classify_merchant_and_category(text: str) -> Tuple[str, Optional[str], str]:
     """
     Retorna (category, subcategory, necessity) usando base de estabelecimentos
-    COM FRONTEIRA DE PALAVRA (word boundary \\b) para que '35.99' nunca mais bata em '99' (Uber/99)!
+    COM FRONTEIRA DE PALAVRA (word boundary \\b) + Tolerância Fuzzy (difflib) para erros de digitação
+    como 'puizza', 'piza', 'hamburgi', 'supermecado', 'picole', etc.
     """
+    import difflib
     t = text.lower()
+    words = [w for w in re.findall(r"[a-zà-ú]{4,}", t)]
 
-    # 1. Prioridade para palavras explícitas de comida/lanche/futilidade ou mercado/padaria
-    if any(re.search(rf"\b{re.escape(k)}\b", t) for k in [
+    food_futility_kws = [
         "sanduíche", "sanduiche", "lanche", "hambúrguer", "hamburguer", "pizza", "pizzaria",
         "açaí", "acai", "sorvete", "picolé", "picole", "pastel", "delivery", "bar", "cerveja",
         "chopp", "petisco", "restaurante", "cafezinho", "coca", "coca-cola", "refrigerante",
-        "refri", "doce", "chocolate", "bolo", "salgado", "coxinha", "esfiha", "sushi"
-    ]):
-        return "Lanche / Delivery", "Alimentação Fora", "futility"
-
-    if any(re.search(rf"\b{re.escape(k)}\b", t) for k in [
+        "refri", "doce", "chocolate", "bolo", "salgado", "coxinha", "esfiha", "sushi", "futilidade"
+    ]
+    market_essential_kws = [
         "mercado", "supermercado", "feira", "açougue", "acougue", "padaria", "hortifruti",
         "almoço", "almoco", "janta", "jantar", "marmita", "pão", "pao", "queijo", "presunto",
-        "leite", "ovos", "arroz", "feijão", "feijao", "carne", "frango", "verdura", "fruta"
-    ]):
+        "leite", "ovos", "arroz", "feijão", "feijao", "carne", "frango", "verdura", "fruta", "alimentação", "alimentacao"
+    ]
+    housing_kws = ["aluguel", "condomínio", "condominio", "luz", "energia", "água", "agua", "internet", "gás", "gas", "iptu", "faxina", "moradia"]
+    transport_kws = ["uber", "99pop", "táxi", "taxi", "gasolina", "combustível", "combustivel", "etanol", "ônibus", "onibus", "metrô", "metro", "estacionamento", "pedágio", "pedagio", "oficina", "mecânico", "ipva", "transporte"]
+    health_kws = ["farmácia", "farmacia", "remédio", "remedio", "consulta", "médico", "medico", "dentista", "exame", "academia", "treino", "suplemento", "creatina", "whey", "saúde", "saude"]
+    sub_kws = ["assinatura", "mensalidade", "streaming", "clube"]
+    leisure_kws = ["roupa", "camisa", "blusa", "calça", "tênis", "tenis", "sapato", "cinema", "ingresso", "show", "jogo", "presente", "shopping", "besteira", "lazer"]
+
+    def _matches_vocab(vocab: list[str]) -> bool:
+        if any(re.search(rf"\b{re.escape(k)}\b", t) for k in vocab):
+            return True
+        for w in words:
+            if difflib.get_close_matches(w, [v for v in vocab if len(v) >= 4], n=1, cutoff=0.76):
+                return True
+        return False
+
+    # 1. Prioridade para palavras explícitas (ou com erro de digitação como 'puizza') de comida/lanche/futilidade ou mercado/padaria
+    if _matches_vocab(food_futility_kws):
+        return "Lanche / Delivery", "Alimentação Fora", "futility"
+
+    if _matches_vocab(market_essential_kws):
         return "Alimentação", "Mercado / Padaria", "essential"
 
     # 2. Estabelecimentos conhecidos com word boundary (\b) para números como '35.99' não baterem em '99'!
@@ -315,15 +334,15 @@ def classify_merchant_and_category(text: str) -> Tuple[str, Optional[str], str]:
         if re.search(rf"(?<![\d.,])\b{re.escape(merchant)}\b(?![\d.,])", t):
             return cat, subcat, nec
 
-    if any(re.search(rf"\b{re.escape(k)}\b", t) for k in ["aluguel", "condomínio", "condominio", "luz", "energia", "água", "agua", "internet", "gás", "gas", "iptu", "faxina"]):
+    if _matches_vocab(housing_kws):
         return "Moradia", "Contas Residenciais", "essential"
-    if any(re.search(rf"\b{re.escape(k)}\b", t) for k in ["uber", "99pop", "táxi", "taxi", "gasolina", "combustível", "combustivel", "etanol", "ônibus", "onibus", "metrô", "metro", "estacionamento", "pedágio", "pedagio", "oficina", "mecânico", "ipva"]):
+    if _matches_vocab(transport_kws):
         return "Transporte", "Mobilidade", "essential"
-    if any(re.search(rf"\b{re.escape(k)}\b", t) for k in ["farmácia", "farmacia", "remédio", "remedio", "consulta", "médico", "medico", "dentista", "exame", "academia", "treino", "suplemento", "creatina", "whey", "plano de saúde"]):
+    if _matches_vocab(health_kws):
         return "Saúde", "Academia & Saúde", "essential"
-    if any(re.search(rf"\b{re.escape(k)}\b", t) for k in ["assinatura", "mensalidade", "streaming", "clube"]):
+    if _matches_vocab(sub_kws):
         return "Assinaturas", "Serviços Recorrentes", "futility"
-    if any(re.search(rf"\b{re.escape(k)}\b", t) for k in ["roupa", "camisa", "blusa", "calça", "tênis", "tenis", "sapato", "cinema", "ingresso", "show", "jogo", "presente", "shopping", "futilidade", "besteira"]):
+    if _matches_vocab(leisure_kws):
         return "Compras / Lazer", "Estilo de Vida", "futility"
 
     return "Outros", None, "essential"
@@ -342,9 +361,11 @@ def extract_financial_entities(text: str, now: Optional[datetime] = None) -> Fin
     # Detecção de referências ao contexto anterior ("esse gasto", "o último lançamento", "foi no crédito")
     references_previous = any(
         ref_kw in t for ref_kw in [
-            "esse gasto", "essa compra", "aquele pagamento", "aquela conta",
+            "esse gasto", "essa compra", "aquele pagamento", "aquela conta", "aquele gasto", "aquela compra",
             "último lançamento", "ultimo lancamento", "última compra", "ultima compra",
-            "que acabei de", "na verdade foi", "errei o valor", "corrigir", "altera para", "muda para"
+            "que acabei de", "na verdade foi", "na verdade", "errei o valor", "errei", "corrigir", "corrige",
+            "corrija", "altera para", "altera pra", "muda para", "muda pra", "mudar para", "mudar pra",
+            "coloca como", "bota como", "entra como", "não é", "nao é", "não foi", "nao foi"
         ]
     ) or (
         amount is None and any(
@@ -372,15 +393,27 @@ def extract_financial_entities(text: str, now: Optional[datetime] = None) -> Fin
     intent = "conversational_query"
     nature = None
 
-    # 0. Resetar / Desfazer
+    # 0. Resetar / Desfazer / Excluir específico
     if any(k in t for k in ["resetar", "reseta", "reset", "zerar", "zere", "zera", "começar do zero", "comecar do zero", "limpar tudo", "apagar tudo"]):
         intent = "reset_all"
-    elif any(k in t for k in ["desfazer", "desfazerr", "desfaz", "cancelar último", "apagar último", "apagar o último", "excluir último", "excluir o último", "remover último"]):
+    elif any(k in t for k in [
+        "desfazer", "desfazerr", "desfaz", "cancelar último", "apagar último", "apagar o último",
+        "excluir último", "excluir o último", "remover último", "apaga a ", "apaga o ", "apagar a ",
+        "apagar o ", "apague a ", "apague o ", "exclui a ", "exclui o ", "excluir a ", "excluir o ",
+        "remove a ", "remove o ", "remover a ", "remover o ", "deleta a ", "deleta o ", "deletar a ", "deletar o "
+    ]):
         intent = "undo_or_delete_last"
         references_previous = True
 
-    # 1. Edição / Correção de registro anterior
-    elif any(k in t for k in ["corrigir", "editar", "na verdade foi", "errei o valor", "muda o último", "alterar último"]):
+    # 1. Edição / Correção de registro anterior (qualquer lançamento ou o último)
+    elif any(k in t for k in [
+        "corrigir", "corrige", "corrija", "editar", "edita", "edite", "na verdade foi", "na verdade",
+        "errei o valor", "errei a ", "errei o ", "muda o último", "alterar último", "muda a ", "muda o ",
+        "mudar a ", "mudar o ", "mude a ", "mude o ", "altera a ", "altera o ", "alterar a ", "alterar o ",
+        "troca a ", "troca o ", "trocar a ", "trocar o ", "passa pra", "passa para", "coloca como",
+        "bota como", "entra como", "não é transporte", "nao é transporte", "não foi transporte",
+        "nao foi transporte", "tá errado", "ta errado", "estava errado", "lançado errado"
+    ]):
         intent = "edit_last_transaction"
         references_previous = True
 

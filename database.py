@@ -433,41 +433,143 @@ def add_transaction(
     }
 
 
+def _find_matching_transaction(cur: sqlite3.Cursor, user_id: str, query_text: str, target_amount: Optional[float] = None) -> Optional[Dict[str, Any]]:
+    """
+    Localiza um lançamento específico do usuário usando:
+    1. Substring direta na descrição ou categoria
+    2. Similaridade aproximada (difflib fuzzy match >= 0.72) para tolerar erros de digitação como 'puizza' -> 'pizza'
+    3. Valor exato (ex: 'aquele gasto de 35.99')
+    """
+    import difflib
+    import re
+    rows = [dict(r) for r in cur.execute(
+        "SELECT * FROM transactions WHERE user_id = ? AND status != 'cancelled' ORDER BY id DESC LIMIT 50",
+        (user_id,)
+    ).fetchall()]
+    if not rows:
+        return None
+
+    stop_words = {
+        "corrigir", "corrige", "corrija", "editar", "edita", "alterar", "altera", "mudar", "muda", "mude",
+        "trocar", "troca", "passa", "coloca", "bota", "entra", "como", "para", "pra", "por", "nao", "não",
+        "foi", "era", "esta", "está", "errado", "errada", "lançamento", "lancamento", "gasto", "compra",
+        "pagamento", "aquele", "aquela", "esse", "essa", "isso", "isto", "ultimo", "último", "ultima",
+        "última", "valor", "categoria", "transporte", "alimentação", "alimentacao", "lanche", "delivery",
+        "futilidade", "supérfluo", "superfluo", "essencial", "apagar", "apaga", "apague", "excluir",
+        "exclui", "remover", "remove", "deletar", "deleta", "desfazer", "desfaz", "cancelar", "cancela",
+        "reais", "real", "conto", "verdade", "errei"
+    }
+    tokens = [
+        w for w in re.findall(r"[a-zà-ú]{3,}", query_text.lower())
+        if w not in stop_words
+    ]
+
+    # 1. Substring direta
+    for tok in tokens:
+        for r in rows:
+            if tok in r["description"].lower():
+                return r
+
+    # 2. Fuzzy match (ex: 'puizza' -> 'pizza', 'picole' -> 'picolé', 'supermecado' -> 'supermercado')
+    for tok in tokens:
+        for r in rows:
+            desc_words = re.findall(r"[a-zà-ú]{3,}", r["description"].lower())
+            if difflib.get_close_matches(tok, desc_words, n=1, cutoff=0.72):
+                return r
+
+    # 3. Busca pelo valor exato mencionado na frase (se for correção de categoria)
+    if target_amount is not None:
+        for r in rows:
+            if abs(float(r["amount"]) - float(target_amount)) < 0.01:
+                return r
+
+    return None
+
+
 def update_transaction_by_keyword(user_id: str, keyword: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
-    Busca um lançamento específico pelo nome/palavra-chave (ex: 'pizza', 'bella massa', 'coca')
-    e aplica as correções solicitadas pelo usuário (categoria, necessidade, descrição, valor).
+    Busca um lançamento específico pelo nome/palavra-chave (com tolerância a erros de digitação como 'puizza')
+    e aplica as correções solicitadas pelo usuário (categoria, necessidade, descrição, valor, pagamento),
+    recalculando o saldo com precisão contábil.
     """
     conn = get_conn()
     cur = conn.cursor()
-    row = cur.execute("""
-        SELECT * FROM transactions
-        WHERE user_id = ? AND status != 'cancelled' AND LOWER(description) LIKE ?
-        ORDER BY id DESC LIMIT 1
-    """, (user_id, f"%{keyword.lower()}%")).fetchone()
-
-    if not row:
+    matched = _find_matching_transaction(cur, user_id, keyword, updates.get("match_amount"))
+    if not matched:
         conn.close()
         return None
 
-    before = dict(row)
+    before = dict(matched)
     tx_id = before["id"]
+    new_amount = updates.get("amount") if updates.get("amount") is not None else before["amount"]
     new_cat = updates.get("category") or before["category"]
-    new_subcat = updates.get("subcategory") or before["subcategory"]
+    new_subcat = updates.get("subcategory") if "subcategory" in updates else before["subcategory"]
     new_nec = updates.get("necessity") or before["necessity"]
     new_desc = updates.get("description") or before["description"]
+    new_pm = updates.get("payment_method") or before["payment_method"]
+    new_card = updates.get("card_name") or before["card_name"]
+
+    bal = get_balance(user_id)
+    if before["type"] == "expense" and before["status"] == "confirmed":
+        if before["payment_method"] != "credit_card":
+            bal += before["amount"]
+        if new_pm != "credit_card":
+            bal -= new_amount
 
     cur.execute("""
         UPDATE transactions
-        SET category = ?, subcategory = ?, necessity = ?, description = ?
+        SET amount = ?, category = ?, subcategory = ?, necessity = ?, description = ?, payment_method = ?, card_name = ?
         WHERE id = ?
-    """, (new_cat, new_subcat, new_nec, new_desc, tx_id))
+    """, (new_amount, new_cat, new_subcat, new_nec, new_desc, new_pm, new_card, tx_id))
 
+    cur.execute("UPDATE users SET current_balance = ? WHERE id = ?", (round(bal, 2), user_id))
     after = dict(cur.execute("SELECT * FROM transactions WHERE id = ?", (tx_id,)).fetchone())
     log_audit(conn, user_id, "edit_transaction_by_keyword", tx_id, before, after)
     conn.commit()
     conn.close()
     return after
+
+
+def undo_specific_or_last_transaction(user_id: str = "voce", query_text: str = "", target_amount: Optional[float] = None) -> Optional[Dict[str, Any]]:
+    """
+    Permite apagar/desfazer tanto o último lançamento ('desfazer') quanto um lançamento específico
+    pelo nome ou valor ('apaga a pizza', 'exclui a puizza', 'remove o gasto de 35.99').
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    tx = None
+    if query_text:
+        tx = _find_matching_transaction(cur, user_id, query_text, target_amount)
+
+    if not tx:
+        row = cur.execute("""
+            SELECT * FROM transactions
+            WHERE user_id = ? AND status != 'cancelled'
+            ORDER BY id DESC LIMIT 1
+        """, (user_id,)).fetchone()
+        if row:
+            tx = dict(row)
+
+    if not tx:
+        conn.close()
+        return None
+
+    bal = get_balance(user_id)
+    if tx["status"] == "confirmed":
+        if tx["type"] == "expense" and tx["payment_method"] != "credit_card":
+            bal += tx["amount"]
+        elif tx["type"] == "income":
+            bal -= tx["amount"]
+        elif tx["type"] == "investment":
+            bal += tx["amount"]
+            cur.execute("UPDATE users SET invested_patrimony = MAX(0, invested_patrimony - ?) WHERE id = ?", (tx["amount"], user_id))
+
+    cur.execute("UPDATE transactions SET status = 'cancelled' WHERE id = ?", (tx["id"],))
+    cur.execute("UPDATE users SET current_balance = ? WHERE id = ?", (round(bal, 2), user_id))
+    log_audit(conn, user_id, "undo_transaction", tx["id"], tx, {"status": "cancelled", "restored_balance": round(bal, 2)})
+    conn.commit()
+    conn.close()
+    return {**tx, "restored_balance": round(bal, 2)}
 
 
 def update_last_transaction(user_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:

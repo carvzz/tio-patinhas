@@ -39,17 +39,17 @@ def check_supabase_tables_ready() -> bool:
         return False
 
 
-def pull_from_supabase_if_local_empty() -> None:
+def pull_from_supabase_if_local_empty(force: bool = False) -> None:
     """
-    Quando o app inicia na nuvem (Render / Railway / Koyeb), restaura automaticamente
-    os usuários, metas e transações diretamente do Supabase (`syarremzrocidaoeyhac`)!
+    Restaura e sincroniza os usuários, metas e transações diretamente do Supabase (`syarremzrocidaoeyhac`)
+    para que tudo que for mandado pelo WhatsApp já apareça na hora no site (Render)!
     """
     try:
         from database import get_conn
         conn = get_conn()
         cur = conn.cursor()
         tx_count = cur.execute("SELECT COUNT(*) as c FROM transactions").fetchone()["c"]
-        if tx_count > 0:
+        if tx_count > 0 and not force:
             conn.close()
             return
 

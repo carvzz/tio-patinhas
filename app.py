@@ -123,8 +123,9 @@ def serve_manifest():
 @app.route("/api/summary", methods=["GET"])
 def api_summary():
     user_id = request.args.get("user_id", "voce")
+    from supabase_sync import check_supabase_tables_ready, pull_from_supabase_if_local_empty
+    pull_from_supabase_if_local_empty(force=True)
     summary = get_dashboard_summary(user_id)
-    from supabase_sync import check_supabase_tables_ready
     supa_ok = check_supabase_tables_ready()
     summary["ai_mode"] = f"Gemini AI Ativo • {'Supabase Cloud OK ☁️' if supa_ok else 'SQLite Local (Pronto p/ SQL Supabase)'}"
     summary["whatsapp_locked"] = bool(WHATSAPP_ALLOWED_NUMBERS)
@@ -142,11 +143,6 @@ def api_chat():
     add_chat_message("user", user_message, user_id)
     result = process_user_message(user_message, user_id)
     add_chat_message("bot", result["reply"], user_id)
-
-    # Dispara também para o WhatsApp real do usuário se o número estiver configurado!
-    active_phone = result["summary"]["active_user"].get("phone", "")
-    if active_phone and active_phone.startswith("5579"):
-        send_whatsapp_cloud_message(active_phone, result["reply"])
 
     return jsonify({
         "reply": result["reply"],
