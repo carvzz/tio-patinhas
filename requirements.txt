@@ -1,0 +1,6 @@
+flask>=3.0.0
+gunicorn>=22.0.0
+httpx>=0.28.0
+google-genai>=2.30.1
+segno>=1.6.1
+neonize>=0.10.0
